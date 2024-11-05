@@ -10,10 +10,8 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ```{r}
 library(tidyverse)
-library(ggridges)
-library(patchwork)
 
-set.seed(1031)
+set.seed(1)
 ```
 
 ## Q1
@@ -43,3 +41,91 @@ sim_res|>
   ggplot(aes(x = n, y = prob))+
   geom_line()
 ```
+
+
+## Q2
+```{r}
+sim_mean_sd = function(n, mu = 0, sigma = 5) {
+  
+  sim_data = tibble(
+    x = rnorm(n, mean = mu, sd = sigma)
+  )
+  sim_data |>
+    summarize(
+      mu_hat = mean(x),
+      sigma_hat = sd(x)
+    )
+  
+  test_result = 
+    t.test(sim_data[["x"]], mu = 0)
+  
+  result = broom::tidy(test_result)
+  
+  tibble(
+    mu_hat = mean(sim_data[["x"]]),
+    sigma_hat = sd(sim_data[["x"]]),
+    p_value = result[["p.value"]]
+  )
+}
+```
+
+
+```{r}
+params = list(
+  n = 30,
+  sigma = 5,
+  alpha = 0.05,
+  mu_values = c(1, 2, 3, 4, 5, 6),
+  num_simulations = 5000
+)
+```
+
+
+```{r}
+sim_results = map_df(params[["mu_values"]], function(mu)
+{
+  output= vector("list", 5000)
+  
+  for (i in 1:5000) {
+  output[[i]] = sim_mean_sd(30)
+  }
+  bind_rows(output) |>
+  mutate(true_mu = mu)
+})
+```
+
+
+
+```{r}
+power_results = 
+  sim_results |>
+  group_by(true_mu) |>
+  summarize(
+    power = mean(as.numeric(p_value) < params[["alpha"]]),                      
+    avg_estimate = mean(mu_hat),                       
+    avg_estimate_rejected = mean(mu_hat[as.numeric(p_value) < params[["alpha"]]])
+  )
+
+```
+
+
+```{r}
+ggplot(power_results, aes(x = true_mu, y = power)) +
+  geom_line() +
+  geom_point() +
+  labs(x = "True Value of μ", y = "Power of the Test",
+       title = "Power of the Test vs. True Value of μ")
+```
+
+```{r}
+ggplot(power_results, aes(x = true_mu)) +
+  geom_line(aes(y = avg_estimate), color = "blue", linetype = "solid") +
+  geom_point(aes(y = avg_estimate), color = "blue") +
+  geom_line(aes(y = avg_estimate_rejected), color = "red", linetype = "dashed") +
+  geom_point(aes(y = avg_estimate_rejected), color = "red") +
+  labs(x = "True Value of μ", y = "Average Estimate of μ̂",
+       title = "Average μ̂ vs. True Value of μ",
+       subtitle = "Blue: All Estimates, Red: Only Rejected Null Hypothesis") +
+  theme_minimal()
+```
+
