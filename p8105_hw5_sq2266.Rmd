@@ -1,0 +1,45 @@
+---
+title: "Homework 5"
+author: "Sihan Qiu"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(ggridges)
+library(patchwork)
+
+set.seed(1031)
+```
+
+## Q1
+```{r}
+bdays_sim = function(n){
+
+bdays = sample(1:365, size = n, replace = TRUE)
+
+duplicate = length(unique(bdays)) < n  #check repeated birthdays
+return(duplicate)
+}
+
+bdays_sim(10)
+```
+
+```{r, error=TRUE}
+sim_res =
+  expand_grid(
+    n = c(2, 50),
+    iter = 1:10000
+  )|>
+  mutate(res = map_dbl(n,bdays_sim))|>
+  group_by(n)|>
+  summarize(prob = mean(res))
+
+sim_res|>
+  ggplot(aes(x = n, y = prob))+
+  geom_line()
+```
