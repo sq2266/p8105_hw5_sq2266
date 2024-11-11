@@ -129,3 +129,105 @@ ggplot(power_results, aes(x = true_mu)) +
   theme_minimal()
 ```
 
+## Q3
+```{r}
+homicide = read.csv("homicide-data.csv")|>
+  janitor::clean_names()
+```
+
+### description of the raw dataset
+the raw dataset includes `r nrow(homicide)` observations, and `r ncol(homicide)` variables. Key variables includes homicides' id, dates, victims' names, race, age, sex, state, city, and disposition of homicides, and the specific location. 
+
+```{r}
+homicide_clean = 
+  homicide |>
+  mutate(
+    victim_last = str_to_title((victim_last)),
+    victim_first = str_to_title((victim_first)),
+    city_state = paste(city, state, sep = ", ")
+  )|>
+  drop_na()
+```
+
+
+```{r}
+homicide_clean|>
+  group_by(city_state) |>
+  summarise(
+    total = n(),
+    unsolved = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+  )
+```
+
+## proportion of baltimore
+```{r}
+baltimore_df = 
+  homicide_clean|>
+  filter(city_state == "Baltimore, MD")
+```
+
+```{r}
+total_bal = nrow(baltimore_df)
+unsolved_bal = sum(pull(baltimore_df, disposition) %in% c("Closed without arrest", "Open/No arrest"))
+```
+
+```{r}
+prop_test = prop.test(x = unsolved_bal, n = total_bal)
+prop_test_df = broom::tidy(prop_test)
+```
+
+
+## proportion of each city
+```{r}
+city_prop_test = 
+  homicide|>
+  mutate(
+    victim_last = str_to_title(victim_last),
+    victim_first = str_to_title(victim_first),
+    city_state = paste(city, state, sep = ", ")  # Create city_state by combining city and state
+  ) |>
+  drop_na() |>
+  
+  group_by(city_state) |>
+  summarise(
+    total_homicide = n(),
+    unsolved_homicide = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+  ) |>
+  mutate(
+    prop_test = map2(unsolved_homicide, total_homicide, ~ prop.test(.x, .y)), 
+    prop_test_tidy = map(prop_test, broom::tidy)  
+  ) |>
+  
+  unnest(prop_test_tidy) |>
+  
+  select(city_state, total_homicide, unsolved_homicide, estimate, conf.low, conf.high) |>
+  rename(
+    estimated_proportion = estimate,
+    conf_int_lower = conf.low,
+    conf_int_upper = conf.high
+  )
+
+```
+
+
+```{r}
+city_prop_test =
+  city_prop_test |>
+  arrange(desc(estimated_proportion)) |>
+  mutate(city_state = factor(city_state, levels = city_state)) 
+```
+
+## making a plot
+```{r}
+ggplot(city_prop_test, aes(x = city_state, y = estimated_proportion)) +
+  geom_boxplot(aes(group = city_state), width = 0.6) +  
+  geom_errorbar(aes(ymin = conf_int_lower, ymax = conf_int_upper), width = 0.3) +  
+  labs(
+    title = "Proportion of Unsolved Homicides by City",
+    x = "City",
+    y = "Estimated Proportion of Unsolved Homicides"
+  ) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
