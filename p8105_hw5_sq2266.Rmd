@@ -4,6 +4,7 @@ author: "Sihan Qiu"
 output: github_document
 ---
 
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -44,90 +45,94 @@ sim_res|>
 
 
 ## Q2
+
 ```{r}
-sim_mean_sd = function(n, mu = 0, sigma = 5) {
+t_sample = function(mu) {
+  sample_data = rnorm(n = 30, mean = mu, sd = 5)
+  t_result = broom::tidy(t.test(sample_data, mu = 0)) |>
+  select(estimate, p.value)
   
-  sim_data = tibble(
-    x = rnorm(n, mean = mu, sd = sigma)
-  )
-  sim_data |>
-    summarize(
-      mu_hat = mean(x),
-      sigma_hat = sd(x)
-    )
-  
-  test_result = 
-    t.test(sim_data[["x"]], mu = 0)
-  
-  result = broom::tidy(test_result)
-  
-  tibble(
-    mu_hat = mean(sim_data[["x"]]),
-    sigma_hat = sd(sim_data[["x"]]),
-    p_value = result[["p.value"]]
-  )
+  return(t_result)
 }
 ```
 
-
 ```{r}
-params = list(
-  n = 30,
-  sigma = 5,
-  alpha = 0.05,
-  mu_values = c(1, 2, 3, 4, 5, 6),
-  num_simulations = 5000
+simulation_df = expand_grid(
+  true_mu = 0:6,     
+  iteration = 1:5000  
 )
 ```
 
-
 ```{r}
-sim_results = map_df(params[["mu_values"]], function(mu)
-{
-  output= vector("list", 5000)
-  
-  for (i in 1:5000) {
-  output[[i]] = sim_mean_sd(30)
-  }
-  bind_rows(output) |>
-  mutate(true_mu = mu)
-})
+simulation_results =
+  simulation_df |>
+  mutate(
+    result = map(true_mu, t_sample)  
+  ) |>
+  unnest(result) 
 ```
 
-
-
 ```{r}
-power_results = 
-  sim_results |>
+power_sum =
+  simulation_results |>
   group_by(true_mu) |>
   summarize(
-    power = mean(as.numeric(p_value) < params[["alpha"]]),                      
-    avg_estimate = mean(mu_hat),                       
-    avg_estimate_rejected = mean(mu_hat[as.numeric(p_value) < params[["alpha"]]])
+    power = mean(p.value < 0.05),  
+    average_mu = mean(estimate),  
+    .groups = "drop"
   )
 
 ```
 
-
+## power of the test plot
 ```{r}
-ggplot(power_results, aes(x = true_mu, y = power)) +
+power_plot =
+  ggplot(power_sum, aes(x = true_mu, y = power)) +
   geom_line() +
   geom_point() +
-  labs(x = "True Value of μ", y = "Power of the Test",
-       title = "Power of the Test vs. True Value of μ")
+  labs(
+    x = "True Value of mu",
+    y = "Power",
+    title = "Power vs True mu"
+  ) +
+  theme_minimal()
+power_plot
 ```
 
+## average and true mean plot
 ```{r}
-ggplot(power_results, aes(x = true_mu)) +
-  geom_line(aes(y = avg_estimate), color = "blue", linetype = "solid") +
-  geom_point(aes(y = avg_estimate), color = "blue") +
-  geom_line(aes(y = avg_estimate_rejected), color = "red", linetype = "dashed") +
-  geom_point(aes(y = avg_estimate_rejected), color = "red") +
-  labs(x = "True Value of μ", y = "Average Estimate of μ̂",
-       title = "Average μ̂ vs. True Value of μ",
-       subtitle = "Blue: All Estimates, Red: Only Rejected Null Hypothesis") +
-  theme_minimal()
+average_results = 
+  simulation_results |>
+  group_by(true_mu) |>
+  summarize(
+    average_mu = mean(estimate),  
+    average_mu_rej = mean(estimate[p.value < 0.05], na.rm = TRUE),  
+    .groups = "drop"
+  )
 ```
+
+
+```{r}
+average_plot =
+  ggplot(average_results) +
+  geom_line(aes(x = true_mu, y = average_mu), color = "lightblue", linewidth = 1) +
+  geom_point(aes(x = true_mu, y = average_mu), color = "lightblue") +
+  geom_line(aes(x = true_mu, y = average_mu_rej), color = "red", linetype = "dashed", linewidth = 1) +
+  geom_point(aes(x = true_mu, y = average_mu_rej), color = "red") +
+  labs(
+    title = "Average mu vs True mu",
+    x = "True Value of mu",
+    y = "Average mu"
+  ) +
+  theme_minimal()
+average_plot
+```
+### Explainaiton
+The sample average of mu across tests where the null is rejected is not equal to the true value of mu. Because the small sample size of mu, which makes the result bias (maybe distorted by some extreme values).
+
+
+
+
 
 ## Q3
 ```{r}
@@ -184,7 +189,7 @@ city_prop_test =
   mutate(
     victim_last = str_to_title(victim_last),
     victim_first = str_to_title(victim_first),
-    city_state = paste(city, state, sep = ", ")  # Create city_state by combining city and state
+    city_state = paste(city, state, sep = ", ")  
   ) |>
   drop_na() |>
   
