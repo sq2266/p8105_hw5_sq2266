@@ -98,8 +98,9 @@ power_plot =
   theme_minimal()
 power_plot
 ```
+###description:
+we can see a positive relationship between effect size and power. When the effect size increases, the power increases. Vice versa. 
 
-## average and true mean plot
 ```{r}
 average_results = 
   simulation_results |>
@@ -111,7 +112,7 @@ average_results =
   )
 ```
 
-
+## average and true mean plot
 ```{r}
 average_plot =
   ggplot(average_results) +
@@ -179,60 +180,62 @@ unsolved_bal = sum(pull(baltimore_df, disposition) %in% c("Closed without arrest
 ```{r}
 prop_test = prop.test(x = unsolved_bal, n = total_bal)
 prop_test_df = broom::tidy(prop_test)
+prop_test_df
 ```
 
 
 ## proportion of each city
 ```{r}
-city_prop_test = 
-  homicide|>
-  mutate(
-    victim_last = str_to_title(victim_last),
-    victim_first = str_to_title(victim_first),
-    city_state = paste(city, state, sep = ", ")  
-  ) |>
-  drop_na() |>
-  
+city_prop =
+  homicide_clean |>
   group_by(city_state) |>
   summarise(
-    total_homicide = n(),
-    unsolved_homicide = sum(disposition %in% c("Closed without arrest", "Open/No arrest"))
+    total_cases = n(),
+    unsolved_cases = sum(disposition %in% c("Closed without arrest", "Open/No arrest")),
+    .groups = "drop"
   ) |>
   mutate(
-    prop_test = map2(unsolved_homicide, total_homicide, ~ prop.test(.x, .y)), 
-    prop_test_tidy = map(prop_test, broom::tidy)  
+    prop_results = map2(
+      unsolved_cases, total_cases,
+      ~ prop.test(.x, .y, correct = TRUE)  
+    ),
+    
+    tidy_results = map(prop_results, broom::tidy)
   ) |>
+
+  unnest(tidy_results) |>
   
-  unnest(prop_test_tidy) |>
-  
-  select(city_state, total_homicide, unsolved_homicide, estimate, conf.low, conf.high) |>
-  rename(
-    estimated_proportion = estimate,
-    conf_int_lower = conf.low,
-    conf_int_upper = conf.high
+  select(
+    city_state,
+    estimate = estimate,  
+    conf.low, 
+    conf.high 
   )
 
 ```
 
 
+
 ```{r}
-city_prop_test =
-  city_prop_test |>
-  arrange(desc(estimated_proportion)) |>
+city_prop_df =
+  city_prop |>
+  arrange(desc(estimate)) |>  
   mutate(city_state = factor(city_state, levels = city_state)) 
 ```
 
 ## making a plot
 ```{r}
-ggplot(city_prop_test, aes(x = city_state, y = estimated_proportion)) +
-  geom_boxplot(aes(group = city_state), width = 0.6) +  
-  geom_errorbar(aes(ymin = conf_int_lower, ymax = conf_int_upper), width = 0.3) +  
+prop_plot =
+  ggplot(city_prop_df, aes(x = city_state, y = estimate)) +
+  geom_point() +  
+  geom_errorbar(aes(ymin = conf.low, ymax = conf.high), width = 0.2) +  
   labs(
     title = "Proportion of Unsolved Homicides by City",
     x = "City",
-    y = "Estimated Proportion of Unsolved Homicides"
+    y = "Proportion of Unsolved Homicides"
   ) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))  
+print(prop_plot)
 ```
 
